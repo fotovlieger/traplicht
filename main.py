@@ -1,41 +1,52 @@
+###########################################################
+# Trap
+###########################################################
 from math import *
 import time
 from utime import ticks_diff, ticks_ms
 import asyncio
 import json				# for cfg
-import sys				# for exit
 
 from bh1750 import BH1750
 from machine import Pin, I2C, SoftI2C
 from neopixel import NeoPixel
 
 from microdot_asyncio import Microdot, Response, send_file
-from microdot_utemplate import render_template
 from microdot_asyncio_websocket import with_websocket
 
 # ------- load cfg -------
 cfg = {
     'luxOn':    40,   # leds on if darker than this
     'luxOff':   30,   # must be <luxOn, hystheresis
-    'timeOff':  10,	  # switch off time
+    'timeOff': 120,	  # switch off time
     'mode':     'auto',  #auto, on, off
+    'color':    '80,30, 0',
 }
 
 state = {
-    'light'  :     0,
-    'mov1':     0,
-    'mov2':     0,
+    'light'  :  0,
     'mov':      0,
     'movT':     0,	#timestamp last mov (ms)
     'movD':     0,	#count down in %
     'on':       False,
 }
 
+webState = {			# state shared among connected web pages
+    'mode' : 'auto',
+    'color': '20,0,0',
+}
+
+# list of connected websockets: added when a client connects,
+# removed when sending an update fails.
+connections = {
+}
+
 # Save cfg to a file
 def saveCfg():
     with open("/cfg.json", "w") as file:
         json.dump(cfg, file)
-
+        print('saveCfg', cfg)
+        
 # Load cfg from a file
 def loadCfg():
     try:
@@ -47,8 +58,10 @@ def loadCfg():
 
 loadCfg()
 saveCfg()
-
 print(json.dumps(cfg))
+
+webState['color'] = cfg['color']
+webState['mode']  = cfg['mode']
 
 # Initialize MicroDot
 app = Microdot()
@@ -62,26 +75,27 @@ lux = 0.0
 pir = 0
 
 #pin 34/35 werkt nie !?!?!
-
 i2c = SoftI2C(scl=Pin(27),sda=Pin(14),freq=100000)
-i2c.scan()
+#i2c.scan()
+try:
+    light   = BH1750(i2c)
+except:
+    light	= False
+    
 
-light   = BH1750(i2c)
-strip1  = NeoPixel(Pin(26), LEDS, 3, 1)  #400kHz 0->800kHz
+strip1  = NeoPixel(Pin(26), LEDS, 3, 1)  #1->400kHz 0->800kHz
 strip2  = NeoPixel(Pin(25), LEDS, 3, 1)  #400kHz 0->800kHz
 strip3  = NeoPixel(Pin(33), LEDS, 3, 1)  #400kHz 0->800kHz
 strip4  = NeoPixel(Pin(32), LEDS, 3, 1)  #400kHz 0->800kHz
 
-# 36=SP, 39=SN
-mov1  = Pin(39, Pin.IN)
-mov2  = Pin(36, Pin.IN)
+mov  = Pin(39, Pin.IN)   # 39=SN
 
 async def calc():
     cnt = 0
     while True:
-        if   cfg['mode'] == 'on':
+        if   webState['mode'] == 'on':
             state['on'] = True
-        elif cfg['mode'] == 'auto':
+        elif webState['mode'] == 'auto':
             # hystherese
             if state['on']:
                 limit = cfg['luxOn']
@@ -91,30 +105,34 @@ async def calc():
         else:
             state['on'] = False
         
-        if cnt % 5 == 0:
+        if cnt % 20 == 0:
           print(json.dumps(state))
         cnt = cnt+1
-        await asyncio.sleep(0.1)  # Sleep before next iteration
+        await asyncio.sleep(.2)  # Sleep before next iteration
         
 async def update_strip():
     while True:
-        if state['on']:
-            strip1.fill(( 0, 0, 0))
-            strip2.fill((80,30, 0))
-            strip3.fill((80,30, 0))
-            strip4.fill((80,30, 0))
+        rgb = list(map(int, webState['color'].split(',')))
+        if len(rgb) == 3:
+            # dim if too bright (max LED current)
+            bright = rgb[0]+rgb[1]+rgb[2]
+            if bright > 300:
+                fac = 300/bright
+                rgb = [int(fac * x) for x in rgb]
+        else:
+            rgb = (30,0,0)
             
-            for i in range(int(LEDS * state['movD'])): 
-                strip1[i]=(255,70,0)
-                
-            # debug
-            for i in range(5):
-                strip1[i]=(0,0,0)
-                strip2[i]=(0,0,0)
-                strip3[i]=(0,0,0)
-            strip2[0]=(250, 0, 0)
-            strip3[0]=( 0,250, 0)
-            strip4[0]=( 0, 0,250)
+
+        if state['on']:
+            strip1.fill(rgb)
+            if webState['mode']=='auto':
+                rgbLow = [int(0.5*state['movD']*x) for x in rgb]
+            else:
+                rgbLow = [int(0.3*x) for x in rgb]
+
+            strip2.fill(rgbLow)
+            strip3.fill(rgbLow)
+            strip4.fill(rgbLow)
 
         else:
             strip1.fill(( 0, 0, 0))
@@ -128,20 +146,19 @@ async def update_strip():
         strip4.write()
         await asyncio.sleep(0.2)  # Sleep for 1 second before next iteration
         
-
 async def read_light():
     while True:
-        lux = light.luminance(BH1750.ONCE_HIRES_1)
+        if light:
+            lux = light.luminance(BH1750.ONCE_HIRES_1)
+        else:
+            lux=100
         state['light'] = round(lux, 1)
-        await asyncio.sleep(0.5)  # Sleep before next iteration
+        await asyncio.sleep(1)  # Sleep before next iteration
         
 # read mov sensors
 async def read_mov():
     while True:
-        # Perform your asynchronous operations here
-        state['mov1'] = mov1.value()
-        state['mov2'] = mov2.value()
-        state['mov']  = state['mov1'] or state['mov2']
+        state['mov']  = mov.value()
         # movD: decays form 1 to 0
         if state['mov']:
             state['movT'] = ticks_ms()
@@ -152,46 +169,96 @@ async def read_mov():
             
         await asyncio.sleep(0.1)  # Sleep before next iteration
 
+# send update to selected client
+async def sendUpdate(addr, msg):
+    ws = connections[addr]
+    try:
+        await ws.send(msg)
+        print('sendUpdate', addr, msg)
+    except:
+        print('close', addr)
+        connections.pop(addr)
 
+# Web update task: send webState to all connected pages
+# when data has changed
+async def updateWebClients():
+    oldVal = ''
+    while True:
+        newVal = json.dumps(webState)
+        if oldVal != newVal:
+            oldVal = newVal
+            for addr in connections:
+                await sendUpdate(addr, newVal)
+                
+        await asyncio.sleep(.2)  # Sleep before next check
+        
+
+def updateMode(data, id):
+    webState[id] = data[id]
+    
+def updateColor(data, id):
+    webState[id] = data[id]
+
+def saveConfig(data, id):
+    if data[id] == 'true':
+        cfg['mode']  = webState['mode']
+        cfg['color'] = webState['color']
+        saveCfg()        
+    
+def onUpdate(data):
+    if 'mode' in data:
+        updateMode(data, 'mode')
+    if 'color' in data:
+        updateColor(data, 'color')
+    if 'saveConfig' in data:
+        saveConfig(data, 'saveConfig')
+    print('onUpdate', webState)
+    
 loop = asyncio.get_event_loop()
 loop.create_task(update_strip())
 loop.create_task(read_light())
 loop.create_task(read_mov())
 loop.create_task(calc())
+loop.create_task(updateWebClients())
 
 # root route
 @app.route('/')
 async def index(request):
     print('index')
-    return render_template('index.html')
+    return send_file('html/index.html')
 
 @app.route('/ws')
 @with_websocket
-async def read_sensor(request, ws):
-    t0=0
+async def getMessage(request, ws):
+    addr = ws.request.client_addr
+    print('updater start', addr)
+    connections[addr] = ws
+    await sendUpdate(addr, json.dumps(webState))	#inital update
+
     while True:
-        #data = await ws.receive()
-        time.sleep(0.4)
-        await ws.send(str(state['light']))
+        msg = await ws.receive()
+        try:
+            data = json.loads(msg)
+            print(json.dumps(data))
+            onUpdate(data)       
+        except ValueError:
+            pass
+        print('received', msg)
 
 # Static CSS/JSS
-@app.route("/static/<path:path>")
+@app.route("/<path:path>")
 def static(request, path):
-    if ".." in path:
-        # directory traversal is not allowed
+    file = 'html/' + path
+    if ".." in file:
+         return "Not found", 404
+    try:
+        os.stat(file)
+    except:
         return "Not found", 404
-    return send_file("static/" + path)
-
-
-# shutdown
-@app.get('/shutdown')
-def shutdown(request):
-    request.app.shutdown()
-    return 'The server is shutting down...'
-
+    return send_file(file)
 
 if __name__ == "__main__":
     try:
-        app.run()
+        app.run(debug=1)
     except KeyboardInterrupt:
         pass
