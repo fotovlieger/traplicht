@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Button...</title>
+    <link rel="stylesheet" href="index.css" />
+</head>
+<body>
+<script src="jscolor.min.js"></script>
+
+    <h1>Trap</h1>
+    
+    <div id="mode" onchange='onModeChanged(this);'>
+      <input type="radio" name="mode" value="on">On
+      <input type="radio" name="mode" value="off">Off
+      <input type="radio" name="mode" value="auto">Auto
+    </div>
+    
+	<p>
+		<button id='color' data-jscolor="{
+			onChange: 'onColor(this, \'color\')',
+			palette: '#fff #fcd #fdc #ffc #dfc #dff #cdf #dcf #ccc', 
+            paletteCols: 9, paletteHeight: 25,
+            value:'CCFFAA'}">
+		</button>
+	</p>
+	<button id="Save" onclick="onSaveConfig()">Save Config</button>
+
+    <script src="index.js"></script>
+</body>
+</html>
