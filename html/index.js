@@ -41,7 +41,6 @@ function updateColor(obj, id) {
     if (rgb.length==3) {
       console.log ('upd',id, val);
       const but = document.getElementById(id);
-      console.log ('upd',id, val);
       if (but) {
         but.jscolor.fromString(hexColor(rgb));
       }
@@ -95,7 +94,20 @@ function onColor(but, tgt) {
   console.log (JSON.stringify(msg));
 }
 
+function updateField(obj, id) {
+  if(id in obj) {
+    var element = document.getElementById(id);
+    console.log(id, obj[id], element);
+    element.value = obj[id];
+  }
+}
+
 function updateValues(obj) {
   if(obj['mode']) updateMode(obj, 'mode');
   if(obj['color']) updateColor(obj, 'color');
+  
+  updateField(obj, 'light');
+  updateField(obj, 'mov');
+  updateField(obj, 'movD');
+  updateField(obj, 'on');
 }

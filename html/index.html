@@ -3,21 +3,21 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Button...</title>
+    <title>Kaal...</title>
     <link rel="stylesheet" href="index.css" />
 </head>
 <body>
 <script src="jscolor.min.js"></script>
 
-    <h1>Trap</h1>
+    <h1>Kaal</h1>
     
     <div id="mode" onchange='onModeChanged(this);'>
       <input type="radio" name="mode" value="on">On
       <input type="radio" name="mode" value="off">Off
       <input type="radio" name="mode" value="auto">Auto
     </div>
-    
-	<p>
+
+    <p>
 		<button id='color' data-jscolor="{
 			onChange: 'onColor(this, \'color\')',
 			palette: '#fff #fcd #fdc #ffc #dfc #dff #cdf #dcf #ccc', 
@@ -26,7 +26,24 @@
 		</button>
 	</p>
 	<button id="Save" onclick="onSaveConfig()">Save Config</button>
-
+	<hr/>
+    <table>
+    <tr>
+      <td>Light intensity:</td>
+      <td><input id='light' type="text" readonly></td>
+    </tr><tr>
+      <td>Movement detected:</td>
+      <td><input id='mov' type="text" readonly></td>
+    </tr>
+    </tr><tr>
+      <td>Movement delay:</td>
+      <td><input id='movD' type="text" readonly></td>
+    </tr>
+    </tr><tr>
+      <td>Light status:</td>
+      <td><input id='on' type="text" readonly></td>
+    </tr>
+    </table>
     <script src="index.js"></script>
 </body>
 </html>
