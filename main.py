@@ -91,7 +91,6 @@ strip4  = NeoPixel(Pin(32), LEDS, 3, 1)  #400kHz 0->800kHz
 mov  = Pin(39, Pin.IN)   # 39=SN
 
 async def calc():
-    cnt = 0
     while True:
         if   webState['mode'] == 'on':
             state['on'] = True
@@ -104,10 +103,7 @@ async def calc():
             state['on'] = state['light']<limit and state['movD']>0
         else:
             state['on'] = False
-        
-        if cnt % 20 == 0:
-          print(json.dumps(state))
-        cnt = cnt+1
+
         await asyncio.sleep(.2)  # Sleep before next iteration
         
 async def update_strip():
@@ -126,9 +122,9 @@ async def update_strip():
         if state['on']:
             strip1.fill(rgb)
             if webState['mode']=='auto':
-                rgbLow = [int(0.5*state['movD']*x) for x in rgb]
+                rgbLow = [int(0.8*state['movD']*x) for x in rgb]
             else:
-                rgbLow = [int(0.3*x) for x in rgb]
+                rgbLow = [int(0.5*x) for x in rgb]
 
             strip2.fill(rgbLow)
             strip3.fill(rgbLow)
@@ -182,8 +178,19 @@ async def sendUpdate(addr, msg):
 # Web update task: send webState to all connected pages
 # when data has changed
 async def updateWebClients():
+    t0 = 0
     oldVal = ''
     while True:
+        t = time.ticks_ms()       
+        if ticks_diff(t, t0) > 1e3:  #ms!
+            # update values once in a while 
+            webState['light'] = state['light']
+            webState['mov'] = state['mov']
+            webState['movD'] = state['movD']
+            webState['on'] = state['on']
+            t0 = t
+            print(json.dumps(state))
+            
         newVal = json.dumps(webState)
         if oldVal != newVal:
             oldVal = newVal
@@ -247,7 +254,7 @@ async def getMessage(request, ws):
 
 # Static CSS/JSS
 @app.route("/<path:path>")
-def static(request, path):
+async def static(request, path):
     file = 'html/' + path
     if ".." in file:
          return "Not found", 404
